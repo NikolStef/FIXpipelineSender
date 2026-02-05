@@ -34,8 +34,22 @@ int main() {
 	addr.sin_addr.s_addr = htonl((10 << 24) | (0 << 16) | (1 << 8) | 53);
 	// inet_pton(AF_INET, "10.0.1.53", &addr.sin_addr);
 
-	// Connect to server : Blocks until connection succeeds or fails
-	connect(sock, (sockaddr*)&addr, sizeof(addr));
+	// Connect to server : Blocks until connection succeeds - no timeout
+	sock = INVALID_SOCKET;
+	while (true) {
+		// redefine socket: Winsock API does not guarantee that calling connect() again will reset this state
+		// i.e. Winsock does not guarantee that connect() can be retried on the same socket.
+		sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (connect(sock, (sockaddr*)&addr, sizeof(addr)) == 0) {
+			std::cout << "Connected to server\n";
+			break;
+		}
+		closesocket(sock);
+		// 10 ms backoff retry
+		_mm_pause();
+		Sleep(10);
+	}
+
 	std::cout << "Connected to server\n"; // log
 
 	// Sender thread (consumer)
@@ -61,7 +75,7 @@ int main() {
 	std::thread producer([&] {
 		for (int i = 0; i < 10; ++i) {
 			// | used instead of SOH for readability
-			std::string is = "8=FIX.4.4|35=D|49=CLIENT|56=SERVER|11=dd|55=AAPL|54=1|38=100|10=00" + std::to_string(i) + "|";
+			std::string is = "8=FIX.4.4|35=D|49=CLIENT|56=SERVER|11=" + std::to_string(i) + "|55=AAPL|54=1|38=100|10=000|";
 			const char* msg_out = is.c_str();
 
 			FixMessage msg{};
